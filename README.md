@@ -1,13 +1,15 @@
 # ImageScout
 
-ImageScout is an image recognition tool that utilizes YOLOv4 (You Only Look Once) for object detection. It allows users to search for images based on specific object queries and visualize the results with bounding boxes highlighting detected objects.
+ImageScout is an image recognition tool that utilizes YOLOv4 (You Only Look Once) for object detection and face recognition. It allows users to search for images based on specific object queries and visualize the results with bounding boxes highlighting detected objects.
+
 
 ## Features
 
 - **Object Detection**: Utilizes YOLOv4 for real-time object detection in images.
 - **Image Search**: Search for images in a specified folder based on user-defined queries.
+- **Face Recognition**: Identify and match faces in images using a pre-trained face recognition model.
 - **Caching**: Features are cached to optimize repeated searches and reduce processing time.
-- **Visualization**: Display images with bounding boxes around detected objects.
+- **Visualization**: Display images with bounding boxes around detected objects and visual results for face recognition.
 
 ## Requirements
 
@@ -17,6 +19,7 @@ ImageScout is an image recognition tool that utilizes YOLOv4 (You Only Look Once
 - Matplotlib
 - Pillow
 - Python-dotenv
+- face-recognition
 
 ## Installation
 
@@ -66,6 +69,13 @@ ImageScout is an image recognition tool that utilizes YOLOv4 (You Only Look Once
 
 ### Classes
 
+   
+
+- **FaceRecognition**:  Manages face recognition tasks, including loading a pre-trained model and recognizing faces in images.
+  
+  #### Methods
+  - `extract_face_features(image_path)`: Extracts face features from an image. This method uses the `face_recognition` library to load an image and extract face encodings. It returns a list of face encodings for any detected faces. If an error occurs during the extraction process, it logs the error and returns `None`.
+
 - **ImageRecognition**: Handles loading the YOLOv4 model, preprocessing images, and extracting object features.
   
   #### Methods
@@ -82,17 +92,16 @@ ImageScout is an image recognition tool that utilizes YOLOv4 (You Only Look Once
   - `plot_image_with_boxes(filename, features)`: Visualizes a single image with bounding boxes drawn around detected objects.
   - `search_images_by_query(query)`: Searches for images containing the queried object class and returns a list of matching images.
 
+- **FaceSearchEngine**: Class for searching images containing specific faces.
+
+  #### Methods
+  - `__init__(folder_path)`: Initializes the search engine with the specified folder path. It loads cached face features or extracts them from images in the folder.
+  - `_load_or_extract_face_features()`: Loads cached face features from a file if available. If not, it extracts face features from images in the specified folder and caches them for future use.
+  - `search_images_by_face(input_image_path)`: Searches for images containing faces from the input image. It compares face encodings from the input image with cached encodings and returns a list of matching image filenames. If no faces are found in the input image, it returns an empty list.
+
+
 ## Caching
 
 Features are cached in a file named `image_features_cache.pkl`. If the cache file exists, it loads the features from the cache; otherwise, it extracts features from the images and caches them for future use.
 
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- YOLOv4 for its efficient and accurate object detection.
-- OpenCV for image processing capabilities.
-- Matplotlib for visualizing the results.
 

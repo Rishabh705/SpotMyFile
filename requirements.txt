@@ -3,3 +3,4 @@ opencv-python
 Pillow
 matplotlib
 python-dotenv
+face-recognition
