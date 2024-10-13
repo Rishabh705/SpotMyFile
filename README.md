@@ -2,6 +2,17 @@
 
 ImageScout is an image recognition tool that utilizes YOLOv4 (You Only Look Once) for object detection and face recognition. It allows users to search for images based on specific object queries and visualize the results with bounding boxes highlighting detected objects.
 
+## Demo
+### Query: image
+
+##### Query text: train
+![image test1](images/image_test.png)
+
+##### Query text: car
+![image test2](images/image_test2.png)
+
+### Query: face
+![image test1](images/face_test1.png)
 
 ## Features
 
@@ -68,8 +79,6 @@ ImageScout is an image recognition tool that utilizes YOLOv4 (You Only Look Once
 ## Code Overview
 
 ### Classes
-
-   
 
 - **FaceRecognition**:  Manages face recognition tasks, including loading a pre-trained model and recognizing faces in images.
   
