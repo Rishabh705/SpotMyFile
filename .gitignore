@@ -4,3 +4,5 @@ coco.names
 image_features_cache.pkl
 face_features_cache.pkl
 .env
+venv/
+**/__pycache__/
