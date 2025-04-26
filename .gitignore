@@ -1,6 +1,6 @@
-yolov4.weights
-yolov4.cfg
-coco.names
-image_features_cache.pkl
-face_features_cache.pkl
+/models
+/caches
+/logs
 .env
+venv/
+**/__pycache__/
