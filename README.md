@@ -1,6 +1,6 @@
-# FileScout
+# SpotMyFile
 
-FileScout is a powerful search tool that combines text embedding search and image recognition capabilities. It enables users to search for both files and images based on content, with support for face recognition, object detection, and text similarity.
+SpotMyFile is a powerful search tool that combines text embedding search and image recognition capabilities. It enables users to search for both files and images based on content, with support for face recognition, object detection, and text similarity.
 
 ## Features
 
