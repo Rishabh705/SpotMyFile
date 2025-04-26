@@ -42,8 +42,8 @@ The system is built with a modular architecture:
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/Rishabh705/image-scout.git
-   cd image-scout
+   git clone https://github.com/Rishabh705/FileScout.git
+   cd FileScout
    ```
 
 2. Install the required packages:
@@ -85,7 +85,7 @@ Enter intent number (1, 2, 3, or 4):
 ## Project Structure
 
 ```
-image-scout/
+FileScout/
 ├── src/
 │   ├── __init__.py
 │   ├── config.py               # Configuration settings
