@@ -2,6 +2,7 @@ import logging
 import os
 from src.config import Config
 
+os.makedirs(Config.LOG_DIR, exist_ok=True)
 class Logger:
     """Centralized logging configuration"""
 
@@ -16,7 +17,7 @@ class Logger:
                 level=logging.INFO,
                 format='%(asctime)s - %(levelname)s - %(message)s',
                 handlers=[
-                    logging.FileHandler(os.path.join(Config.CACHE_DIR, 'search_engine.log')),
+                    logging.FileHandler(os.path.join(Config.LOG_DIR, 'search_engine.log')),
                     logging.StreamHandler()
                 ]
             )

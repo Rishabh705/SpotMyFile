@@ -7,6 +7,8 @@ import pickle
 import time
 import os
 
+os.makedirs(Config.CACHE_DIR, exist_ok=True)
+
 class CacheManager:
     """LRU-based cache manager"""
 

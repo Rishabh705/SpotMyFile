@@ -1,23 +1,25 @@
 from src.logging import logger
 from src.config import Config
-from src.text import ContentExtractor
 from typing import Any, List, Optional, Set, Tuple
 import numpy as np 
-import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from sklearn.metrics.pairwise import cosine_similarity
 from tqdm import tqdm
 import os
 import re
+from src.utils import create_batches
 
 class FileIndexer:
     """Indexes files with text embedding for search"""
-    
-    def __init__(self, text_processor, embeddings_cache_manager, content_cache_manager):
+
+    def __init__(self, text_processor, embeddings_cache_manager, content_cache_manager, content_extractor, lock):
         """Initialize the file indexer"""
         self.text_processor = text_processor
         self.embeddings_cache_manager = embeddings_cache_manager
         self.content_cache_manager = content_cache_manager
-    
+        self.content_extractor = content_extractor  # Inject ContentExtractor
+        self.lock = lock  # Inject the lock
+
     def index_files(
         self,
         file_paths: List[str],
@@ -46,44 +48,24 @@ class FileIndexer:
         # PHASE 1: Extract content using ThreadPoolExecutor (I/O bound)
         logger.info("Phase 1: Extracting text from files...")
         extracted_contents = {}
-        
-        # Adaptive batching based on file size
-        batches = []
-        current_batch = []
-        current_batch_size = 0
-        
-        for file_path in new_files:
-            # Estimate file size
-            file_size = os.path.getsize(file_path)
-            
-            # If adding this file would exceed our memory target, start a new batch
-            if len(current_batch) >= batch_size or current_batch_size + file_size > max_batch_memory:
-                if current_batch:  # Don't add empty batches
-                    batches.append(current_batch)
-                current_batch = [file_path]
-                current_batch_size = file_size
-            else:
-                current_batch.append(file_path)
-                current_batch_size += file_size
-        
-        # Add the final batch if not empty
-        if current_batch:
-            batches.append(current_batch)
+
+        # Create batches using the utility function
+        batches = create_batches(new_files, batch_size, max_batch_memory)
         
         # Now process each batch of files (I/O bound)
         for batch_idx, batch_files in enumerate(batches):
             logger.info(f"Processing batch {batch_idx + 1}/{len(batches)}")
             
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 # Submit extraction tasks
                 future_to_file = {
-                    executor.submit(ContentExtractor.extract_text, file_path): file_path
+                    executor.submit(self.content_extractor.extract_text, file_path): file_path
                     for file_path in batch_files
                 }
                 
                 # Process completed tasks with a progress bar
                 for future in tqdm(
-                    concurrent.futures.as_completed(future_to_file),
+                    as_completed(future_to_file),
                     total=len(batch_files),
                     desc="Extracting content"
                 ):
@@ -100,20 +82,21 @@ class FileIndexer:
                         if result:
                             extracted_contents[file_path] = result
 
-                            # ✅ Cache the extracted content for preview/BM25
                             if self.content_cache_manager:
-                                self.content_cache_manager.add_item(file_path, result)
+                                with self.lock:
+                                    self.content_cache_manager.add_item(file_path, result)
 
-                    except concurrent.futures.TimeoutError:
+                    except TimeoutError:
                         logger.warning(f"Content extraction from {file_path} timed out")
                     except Exception as e:
                         logger.error(f"Exception extracting content from {file_path}: {e}")
             
-            # Save progress periodically
-            self.content_cache_manager.save_cache()
+            with self.lock:
+                self.content_cache_manager.save_cache()
+
         
         logger.info(f"Successfully extracted content from {len(extracted_contents)} of {len(new_files)} files")
-        
+
         if not extracted_contents:
             logger.warning("No content extracted from any files. Aborting embedding phase.")
             return 0
@@ -142,17 +125,19 @@ class FileIndexer:
 
             for file_path, emb in zip(valid_files, embeddings):
                 if emb is not None:
-                    self.embeddings_cache_manager.add_item(file_path, emb)
+                    with self.lock:
+                        self.embeddings_cache_manager.add_item(file_path, emb)
                     successful_files += 1
 
+        with self.lock:
             self.embeddings_cache_manager.save_cache()
 
-        
         # Save the final cache
         logger.info(f"Successfully processed {successful_files} new files")
         logger.info(f"New cache size: {self.embeddings_cache_manager.get_size()} files")
-        self.embeddings_cache_manager.save_cache(force=True)
-        
+        with self.lock:
+            self.embeddings_cache_manager.save_cache(force=True)
+
         return successful_files
 
 
@@ -198,17 +183,17 @@ class FileSearcher:
         similarities = cosine_similarity([query_embedding], embeddings_matrix)[0]
         
         return list(zip(valid_paths, similarities))
-    
-    def _extract_preview(self, file_path, query, max_length=None):
-        """
-        Extract a preview snippet from the file content that's relevant to the query
         
+    def _generate_preview(self, file_path, query, max_length=None):
+        """
+        Generate a preview snippet from the file content that's relevant to the query
         """
         if max_length is None:
             max_length = Config.PREVIEW_LENGTH
 
         try:
-            # Get content either from cache or extract it
+            # Get content using a single retrieval path
+            content = None
             if self.content_cache_manager and self.content_cache_manager.contains(file_path):
                 content = self.content_cache_manager.get_item(file_path)
             else:
@@ -216,81 +201,67 @@ class FileSearcher:
                 # Store in cache if available
                 if self.content_cache_manager:
                     self.content_cache_manager.add_item(file_path, content)
-            
+                
             if not content:
                 return "No preview available"
             
-            # Split query into keywords for more flexible matching
-            query_words = self.text_processor.clean_text(query).split()
-            
-            # Check if any query words are in the content
-            best_snippet = None
-            best_score = -1
-            
-            # Convert to lowercase for case-insensitive matching
+            # Convert to lowercase once for case-insensitive matching
             content_lower = content.lower()
             
-            # Try to find best paragraph containing query words
+            # Split query into keywords once
+            query_words = self.text_processor.clean_text(query).split()
+            
+            # Find the best paragraph with a single pass
             paragraphs = re.split(r'\n\s*\n', content)
+            best_para = None
+            best_score = -1
+            best_positions = []
             
             for para in paragraphs:
                 para_lower = para.lower()
-                # Count how many query words appear in the paragraph
-                score = sum(1 for word in query_words if word in para_lower)
+                # Track positions of all matches for better snippet selection
+                positions = []
+                score = 0
+                
+                for word in query_words:
+                    word_pos = para_lower.find(word)
+                    while word_pos >= 0:
+                        positions.append(word_pos)
+                        score += 1
+                        # Find next occurrence
+                        word_pos = para_lower.find(word, word_pos + 1)
+                
                 if score > best_score:
                     best_score = score
-                    best_snippet = para
+                    best_para = para
+                    best_positions = positions
             
-            # If we found a good paragraph, use it
-            if best_snippet and best_score > 0:
-                # Trim to max_length if needed
-                if len(best_snippet) > max_length:
-                    # Try to find the most relevant section within the paragraph
-                    query_positions = []
-                    for word in query_words:
-                        word_pos = best_snippet.lower().find(word)
-                        if word_pos >= 0:
-                            query_positions.append(word_pos)
-                    
-                    if query_positions:
-                        # Center the window around the average position of query terms
-                        center_pos = sum(query_positions) // len(query_positions)
-                        start = max(0, center_pos - max_length // 2)
-                        end = min(len(best_snippet), start + max_length)
-                        
-                        # Adjust to not cut words in the middle
-                        if start > 0:
-                            # Find the first space before the start position
-                            space_before = best_snippet.rfind(' ', 0, start)
-                            if space_before != -1:
-                                start = space_before + 1
-                        
-                        if end < len(best_snippet):
-                            # Find the first space after the end position
-                            space_after = best_snippet.find(' ', end)
-                            if space_after != -1:
-                                end = space_after
-                        
-                        snippet = best_snippet[start:end].strip()
-                    else:
-                        # If we couldn't find query terms, just take the first part
-                        snippet = best_snippet[:max_length].strip()
-                else:
-                    snippet = best_snippet.strip()
+            # If no match found, return start of document
+            if best_score <= 0:
+                return content[:max_length].strip() + "..." if len(content) > max_length else content.strip()
                 
-                # Add ellipses if we're showing a partial paragraph
-                if len(snippet) < len(best_snippet):
-                    return f"...{snippet}..."
-                return snippet
+            # Single snippet generation with all context    
+            if len(best_para) > max_length and best_positions:
+                # Center snippet around average position of matches
+                center_pos = sum(best_positions) // len(best_positions)
+                start = max(0, center_pos - max_length // 2)
+                end = min(len(best_para), start + max_length)
+                
+                # Adjust boundaries to avoid cutting words
+                if start > 0:
+                    start = best_para.rfind(' ', 0, start) + 1 if best_para.rfind(' ', 0, start) >= 0 else start
+                
+                if end < len(best_para):
+                    end = best_para.find(' ', end) if best_para.find(' ', end) >= 0 else end
+                
+                snippet = best_para[start:end].strip()
+                return f"...{snippet}..." if len(snippet) < len(best_para) else snippet
             
-            # If no good paragraph found, just return the beginning of the content
-            if len(content) > max_length:
-                return content[:max_length].strip() + "..."
-            return content.strip()
-            
+            return best_para.strip()
+                
         except Exception as e:
-            logger.error(f"Error extracting preview from {file_path}: {e}")
-            return "Preview extraction failed"
+            logger.error(f"Error generating preview from {file_path}: {e}")
+            return "Preview generation failed"
     
     def search(self, query: str, top_k: int = 5, include_preview: bool = True) -> List[Tuple[str, float, Optional[str]]]:
         """
@@ -336,7 +307,7 @@ class FileSearcher:
             logger.info("Generating previews for top results...")
             results_with_preview = []
             for file_path, similarity in top_results:
-                preview = self._extract_preview(file_path, query)
+                preview = self._generate_preview(file_path, query)
                 results_with_preview.append((file_path, similarity, preview))
             return results_with_preview
         
@@ -389,7 +360,7 @@ class FileSearcher:
             results_with_preview = []
             logger.info("Generating previews for top hybrid results...")
             for file_path, score in sorted_results[:top_k]:
-                preview = self._extract_preview(file_path, query)
+                preview = self._generate_preview(file_path, query)
                 results_with_preview.append((file_path, score, preview))
             return results_with_preview
         

@@ -1,18 +1,17 @@
 import os
 
 class Config:
-    """Central configuration class for Scout"""
+    """Central configuration class for Scout with image support"""
     
     # Cache setup
-    CACHE_DIR = os.environ.get('CACHE_DIR', 'C:\\Users\\Rishu\\Downloads')
-    
+    CACHE_DIR = os.getcwd() + '\\caches'
+    LOG_DIR = os.getcwd() + '\\logs'
     # Cache file names
     CACHE_FILES = {
         'text': 'text_features_cache.pkl',
-        'image': 'image_features_cache.pkl',
+        'content': 'content_cache.pkl',
+        'object': 'object_features_cache.pkl',
         'face': 'face_features_cache.pkl',
-        'image_text': 'image_text_cache.pkl',
-        'content': 'content_cache.pkl'  # Added content cache file
     }
     
     # Exclusion lists
@@ -27,7 +26,7 @@ class Config:
     
     # Extensions
     IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg"]
-    FILE_EXTENSIONS = [".pdf", ".txt", ".docx"]
+    FILE_EXTENSIONS = [".pdf", ".txt", ".docx"] + IMAGE_EXTENSIONS
     
     # OCR Configuration
     TESSERACT_CONFIG = os.environ.get('TESSERACT_CONFIG', '')
@@ -48,14 +47,26 @@ class Config:
         "bgem3": "BAAI/bge-m3",
     }
     
+    # YOLO model settings
+    YOLO_WEIGHTS = os.environ.get('YOLO_WEIGHTS', 'models/yolov4.weights')
+    YOLO_CONFIG = os.environ.get('YOLO_CONFIG', 'models/yolov4.cfg')
+    YOLO_CLASSES = os.environ.get('YOLO_CLASSES', 'models/coco.names')
+    YOLO_CONFIDENCE = float(os.environ.get('YOLO_CONFIDENCE', '0.8'))
+    
+    # Face recognition settings
+    FACE_SIMILARITY_THRESHOLD = float(os.environ.get('FACE_SIMILARITY', '0.4'))
+    
     @classmethod
     def initialize(cls):
         """Initialize configuration and create necessary directories"""
         os.makedirs(cls.CACHE_DIR, exist_ok=True)
+        os.makedirs(cls.LOG_DIR, exist_ok=True) 
+
         for cache_file in cls.CACHE_FILES.values():
             cache_path = os.path.join(cls.CACHE_DIR, cache_file)
             cache_dir = os.path.dirname(cache_path)
             os.makedirs(cache_dir, exist_ok=True)
+
     
     @classmethod
     def get_cache_path(cls, cache_type):
