@@ -1,11 +1,10 @@
-# Optimized Scout Application - Main File
-# Implements lazy loading and optimized initialization
-
 import os
 import time
 import threading
 from src.config import Config
 from src.utils import FileSystem
+from dotenv import load_dotenv
+load_dotenv()
 
 # Early initialization of Config
 Config.initialize()

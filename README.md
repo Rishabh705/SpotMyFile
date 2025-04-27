@@ -2,6 +2,9 @@
 
 SpotMyFile is a powerful search tool that combines text embedding search and image recognition capabilities. It enables users to search for both files and images based on content, with support for face recognition, object detection, and text similarity.
 
+## Demo
+[![Watch the video](https://raw.githubusercontent.com/Rishabh705/yourrepository/main/assets/thumbnail.jpg)](https://raw.githubusercontent.com/Rishabh705/yourrepository/main/assets/video.mp4)
+
 ## Features
 
 ### File Search
